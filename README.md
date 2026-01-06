@@ -6,12 +6,23 @@
 ![Node](https://img.shields.io/badge/node-%3E%3D16.0.0-green.svg)
 ![React](https://img.shields.io/badge/react-%5E18.2.0-blue.svg)
 
+<div align="center">
+  <a href="https://codedojo-client.vercel.app">
+    <img src="https://img.shields.io/badge/Live_Demo-Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white" alt="Live Demo" />
+  </a>
+  <a href="https://codedojo-backend.onrender.com">
+    <img src="https://img.shields.io/badge/API_Server-Render-46E3B7?style=for-the-badge&logo=render&logoColor=white" alt="API Server" />
+  </a>
+</div>
+
 **CodeDojo** is a comprehensive training platform designed for competitive programmers. It integrates directly with the **Codeforces API** to provide advanced analytics, contest hosting, and personalized problem recommendations that go beyond the standard platform features.
 
 ---
 
 ## 📋 Table of Contents
 - [Features](#-features)
+- [Screenshots](#-screenshots)
+- [Deployment](#-deployment)
 - [Tech Stack](#-tech-stack)
 - [Project Structure](#-project-structure)
 - [Getting Started](#-getting-started)
@@ -23,6 +34,35 @@
 
 ### 🛡️ Secure Authentication
 - **Challenge-Based Login**: Authenticate securely using your existing Codeforces account. No new passwords to remember—just a simple cryptographic challenge using your profile settings.
+
+### 📸 Screenshots
+<div align="center">
+  <img src="./assets/screenshots/Home.png" alt="Home Page" width="800" />
+  <p><i>Landing Page</i></p>
+  <br/>
+
+  <img src="./assets/screenshots/Dashboard1.png" alt="Dashboard" width="800" />
+  <p><i>User Dashboard</i></p>
+  <br/>
+
+  <img src="./assets/screenshots/ContestLeaderboard.png" alt="Contest Leaderboard" width="800" />
+  <p><i>Real-time Contest Leaderboard</i></p>
+  <br/>
+
+  <img src="./assets/screenshots/Compare1.png" alt="Player Comparison" width="800" />
+  <p><i>Head-to-Head Comparison</i></p>
+</div>
+
+> **Want to see more?** Check out the full gallery in the [screenshots folder](./assets/screenshots).
+
+### 🌍 Deployment
+This project is fully deployed and available for use:
+
+- **Frontend**: Hosted on [Vercel](https://codedojo-client.vercel.app)
+- **Backend**: Hosted on [Render](https://codedojo-backend.onrender.com)
+- **Database**: MongoDB Atlas
+
+To deploy your own instance, follow the [Getting Started](#-getting-started) guide below.
 
 ### 🏆 Custom Contests
 - **Host Your Own**: Create private contests with custom durations and problem sets.
@@ -127,4 +167,5 @@ CodeDojo/
 
 ## 📝 License
 **Proprietary - All Rights Reserved**
+
 Created by **Santosh** for CodeDojo.
