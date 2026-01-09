@@ -10,11 +10,9 @@ import {
 
 const router = express.Router();
 
-// --- PUBLIC ROUTES ---
 router.get('/', getPosts);
 router.get('/:postId', getPostById);
 
-// --- PROTECTED ROUTES ---
 router.post('/', protect, createPost);
 router.post('/:postId/vote', protect, votePost);
 router.delete('/:postId', protect, deletePost);

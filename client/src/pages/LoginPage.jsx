@@ -34,7 +34,7 @@ const LoginPage = () => {
 
         try {
             await loginWithChallenge(handle);
-            navigate('/dashboard'); // Redirect to dashboard on successful login
+            navigate('/dashboard');
         } catch (err) {
             setError(err.response?.data?.error || 'Verification failed. Please ensure you have submitted the solution correctly.');
         } finally {

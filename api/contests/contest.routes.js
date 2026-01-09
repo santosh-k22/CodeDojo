@@ -9,16 +9,16 @@ import {
     getLeaderboard,
     joinContest,
     addManualProblem,
+    getExternalContests,
 } from './contest.controller.js';
 
 const router = express.Router();
 
-// --- PUBLIC ROUTES ---
 router.get('/', getContests);
+router.get('/external', getExternalContests);
 router.get('/slug/:slug', getContestBySlug);
 router.get('/slug/:slug/leaderboard', getLeaderboard);
 
-// --- PROTECTED ROUTES ---
 router.post('/create', protect, createContest);
 router.post('/slug/:slug/join', protect, joinContest);
 router.post('/:contestId/add-random', protect, addRandomProblems);

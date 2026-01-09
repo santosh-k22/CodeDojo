@@ -20,7 +20,13 @@ const PostSchema = new mongoose.Schema(
             type: Number,
             default: 0,
         },
-        votedBy: [
+        upvotedBy: [
+            {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'User',
+            },
+        ],
+        downvotedBy: [
             {
                 type: mongoose.Schema.Types.ObjectId,
                 ref: 'User',

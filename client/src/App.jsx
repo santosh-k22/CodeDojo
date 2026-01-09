@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import NavigationBar from './layouts/NavigationBar';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
@@ -28,6 +28,7 @@ function App() {
         <Route path="/community/:id" element={<BlogDetailPage />} />
         <Route path="/friends" element={<FriendsPage />} />
         <Route path="/compare" element={<ComparisonPage />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>
   );

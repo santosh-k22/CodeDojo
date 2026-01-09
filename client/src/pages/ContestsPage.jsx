@@ -3,9 +3,9 @@ import { Container, Row, Col, Card, Button, Spinner, Alert, Tabs, Tab, Badge } f
 import { Link } from 'react-router-dom';
 import api from '../app/api';
 import moment from 'moment';
-import axios from 'axios';
 import Countdown from 'react-countdown';
 import { Trophy, Swords, CalendarCheck2, PlusCircle } from 'lucide-react';
+import useCodeforcesContests from '../hooks/useCodeforcesContests';
 
 const ContestCard = ({ contest }) => {
     const isDojoContest = !!contest.host;
@@ -27,7 +27,7 @@ const ContestCard = ({ contest }) => {
         : <Button as="a" href={buttonLink} target="_blank" rel="noopener noreferrer" variant="outline-primary" className="mt-auto w-100">View on Codeforces</Button>;
 
     return (
-        <Card className="mb-4 h-100 shadow-sm">
+        <Card className="h-100 shadow-sm">
             <Card.Body className="d-flex flex-column">
                 <Badge pill bg={isDojoContest ? 'dark' : 'secondary'} className="mb-2 align-self-start">
                     {isDojoContest ? <Trophy size={14} className="me-1" /> : <Swords size={14} className="me-1" />}
@@ -51,11 +51,10 @@ const ContestCard = ({ contest }) => {
 
 const ContestsPage = () => {
     const [codeDojoContests, setCodeDojoContests] = useState([]);
-    const [codeforcesContests, setCodeforcesContests] = useState([]);
     const [allContests, setAllContests] = useState([]);
 
     const [isLoadingDojo, setIsLoadingDojo] = useState(true);
-    const [isLoadingCodeforces, setIsLoadingCodeforces] = useState(true);
+    const { contests: codeforcesContests, loading: isLoadingCodeforces } = useCodeforcesContests();
 
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
@@ -78,29 +77,8 @@ const ContestsPage = () => {
         }
     };
 
-    const fetchCodeforcesContests = async () => {
-        setIsLoadingCodeforces(true);
-        try {
-            const { data } = await axios.get('https://codeforces.com/api/contest.list?gym=false');
-            const upcoming = data.result
-                .filter(c => c.phase === 'BEFORE')
-                .map(c => ({
-                    ...c,
-                    startTime: new Date(c.startTimeSeconds * 1000),
-                    endTime: new Date((c.startTimeSeconds + c.durationSeconds) * 1000),
-                    slug: c.id,
-                }));
-            setCodeforcesContests(upcoming);
-        } catch (err) {
-            console.error("Failed to fetch Codeforces contests", err);
-        } finally {
-            setIsLoadingCodeforces(false);
-        }
-    };
-
     useEffect(() => {
         fetchDojoContests(1);
-        fetchCodeforcesContests();
     }, []);
 
     useEffect(() => {
@@ -121,7 +99,7 @@ const ContestsPage = () => {
             return <Alert variant="info">No upcoming {source} contests found.</Alert>;
         }
         return (
-            <Row>
+            <Row className="gy-5 g-4">
                 {contests.map((contest, index) => (
                     <Col md={6} lg={4} key={`${contest.id || contest._id}-${index}`}>
                         <ContestCard contest={contest} />

@@ -51,6 +51,10 @@
 
   <img src="./assets/screenshots/Compare1.png" alt="Player Comparison" width="800" />
   <p><i>Head-to-Head Comparison</i></p>
+  <br/>
+
+  <img src="./assets/screenshots/Community.png" alt="Community Page" width="800" />
+  <p><i>Community Discussions</i></p>
 </div>
 
 > **Want to see more?** Check out the full gallery in the [screenshots folder](./assets/screenshots).
@@ -76,8 +80,10 @@ To deploy your own instance, follow the [Getting Started](#-getting-started) gui
 - **Tag Mastery**: See which topics (DP, Graphs, Number Theory) you dominate and where you lack.
 
 ### 🤝 Community & Friends
+- **Community Voting**: Upvote or downvote posts to highlight the best content and discussions.
+- **User Search**: Easily find and follow other competitive programmers by their handle.
 - **Player Comparison**: Compare your stats side-by-side with any other coder.
-- **Community Forum**: Discuss problems, share tutorials, and upvote quality content.
+- **Community Forum**: Discuss problems, share tutorials, and engage with the community.
 
 ### 🧠 Smart Recommendations
 - **AI-Driven Suggestions**: Get problems tailored specifically to your rating range to maximize improvement.
@@ -107,11 +113,11 @@ CodeDojo/
 │   ├── community/          # Forum Posts & Comments
 │   ├── contests/           # Contest Management & Leaderboards
 │   ├── profile/            # User Stats & Analysis
-│   └── users/              # User Data Management
+│   └── users/              # User Data Management & Friends
 ├── client/                 # React Frontend
 │   ├── src/
 │   │   ├── app/            # Global Context & API Config
-│   │   ├── features/       # Reusable Components (Charts, Cards)
+│   │   ├── features/       # Reusable Components (Charts, Cards, VoteControl)
 │   │   ├── layouts/        # Page Layouts (Navbar)
 │   │   ├── pages/          # Full Page Views
 │   │   └── utils/          # Helpers (Colors, Formatting)
@@ -140,9 +146,10 @@ CodeDojo/
     npm install
 
     # Create .env file
-    echo "MONGO_URI=mongodb://localhost:27017/codedojo" > .env
+    echo "MONGO_URI=<your_mongodb_connection_string>" > .env
     echo "JWT_SECRET=supersecretkey" >> .env
     echo "PORT=5001" >> .env
+    echo "CLIENT_URL=http://localhost:5173" >> .env
 
     # Start the server
     npm start

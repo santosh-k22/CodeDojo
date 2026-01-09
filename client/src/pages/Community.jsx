@@ -6,6 +6,7 @@ import moment from 'moment';
 import { AuthContext } from '../app/AuthContext';
 import { MessageSquarePlus, Trash2 } from 'lucide-react';
 import UserLink from '../features/components/UserLink';
+import VoteControl from '../features/components/VoteControl';
 
 const Community = () => {
     const [posts, setPosts] = useState([]);
@@ -24,7 +25,7 @@ const Community = () => {
             setIsLoading(true);
             const { data } = await api.get('/community');
             setPosts(data);
-        } catch (err) {
+        } catch {
             setError('Could not fetch community posts.');
         } finally {
             setIsLoading(false);
@@ -60,8 +61,8 @@ const Community = () => {
         try {
             await api.delete(`/community/${postId}`);
             setPosts(posts.filter(p => p._id !== postId));
-        } catch (err) {
-            alert('Failed to delete post.');
+        } catch {
+            setError('Failed to delete post.');
         }
     };
 
@@ -103,24 +104,27 @@ const Community = () => {
             {!isLoading && posts.length > 0 ? (
                 posts.map(post => (
                     <Card key={post._id} className="mb-3">
-                        <Card.Body>
-                            <div className="d-flex justify-content-between align-items-start">
-                                <Card.Title>
-                                    <Link to={`/community/${post._id}`}>{post.title}</Link>
-                                </Card.Title>
-                                {user && user.handle === post.author.handle && (
-                                    <Button variant="link" className="text-danger p-0" onClick={() => handleDeletePost(post._id)}>
-                                        <Trash2 size={18} />
-                                    </Button>
-                                )}
+                        <Card.Body className="d-flex">
+                            <VoteControl post={post} />
+                            <div className="flex-grow-1">
+                                <div className="d-flex justify-content-between align-items-start">
+                                    <Card.Title>
+                                        <Link to={`/community/${post._id}`}>{post.title}</Link>
+                                    </Card.Title>
+                                    {user && user.handle === post.author.handle && (
+                                        <Button variant="link" className="text-danger p-0" onClick={() => handleDeletePost(post._id)}>
+                                            <Trash2 size={18} />
+                                        </Button>
+                                    )}
+                                </div>
+                                <Card.Subtitle className="mb-2 text-muted">
+                                    Posted by <UserLink handle={post.author.handle} rating={post.author.rating} /> - {moment(post.createdAt).fromNow()}
+                                </Card.Subtitle>
+                                <Card.Text>
+                                    {post.content.substring(0, 200)}...
+                                </Card.Text>
+                                <Link to={`/community/${post._id}`}>View Post</Link>
                             </div>
-                            <Card.Subtitle className="mb-2 text-muted">
-                                Posted by <UserLink handle={post.author.handle} rating={post.author.rating} /> - {moment(post.createdAt).fromNow()}
-                            </Card.Subtitle>
-                            <Card.Text>
-                                {post.content.substring(0, 200)}...
-                            </Card.Text>
-                            <Link to={`/community/${post._id}`}>View Post</Link>
                         </Card.Body>
                     </Card>
                 ))

@@ -1,5 +1,5 @@
 import { useState, useEffect, useContext } from 'react';
-import { Container, Row, Col, Card, Spinner, Alert, Table } from 'react-bootstrap';
+import { Container, Row, Col, Card, Spinner, Alert, Table, Button } from 'react-bootstrap';
 import { useParams } from 'react-router-dom';
 import api from '../app/api';
 import moment from 'moment';
@@ -12,73 +12,90 @@ import ProblemRecommendations from '../features/components/ProblemRecommendation
 import SubmissionHeatmap from '../features/components/SubmissionHeatmap';
 import UpcomingContestsWidget from '../features/components/UpcomingContestsWidget';
 import { getHandleColor, getRankTitle } from '../utils/codeforcesColors';
-import { Award, Star, BarChart3, TrendingUp } from 'lucide-react';
+import { Award, Star, BarChart3, TrendingUp, UserPlus, UserCheck } from 'lucide-react';
+import useUserProfile from '../hooks/useUserProfile';
 
 const Dashboard = () => {
-    const { handle: routeHandle } = useParams(); // Get handle from URL if present
+    const { handle: routeHandle } = useParams();
     const { user } = useContext(AuthContext);
 
-    // Determine the target handle
     const targetHandle = routeHandle || user?.handle;
     const isOwner = !routeHandle || (user && user.handle === routeHandle);
 
-    const [profileData, setProfileData] = useState(null);
-    const [statsData, setStatsData] = useState(null);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState(null);
+    const { data: hookData, loading: hookLoading, error: hookError } = useUserProfile(targetHandle);
+
+    const [isFollowing, setIsFollowing] = useState(false);
+    const [isToggling, setIsToggling] = useState(false);
+    const [friendsLoading, setFriendsLoading] = useState(false);
 
     useEffect(() => {
-        const fetchData = async () => {
-            if (!targetHandle) {
-                setIsLoading(false);
-                return;
-            }
-
-            try {
-                setIsLoading(true);
-                const infoPromise = api.get(`/profile/info/${targetHandle}`);
-                const statsPromise = api.get(`/profile/stats/${targetHandle}?t=${Date.now()}`);
-
-                const [infoRes, statsRes] = await Promise.all([infoPromise, statsPromise]);
-
-                if (isOwner) {
-                    const { data } = await api.get('/profile/data');
-                    setProfileData(data);
-                } else {
-                    setProfileData({ info: infoRes.data, submissions: [] });
+        const checkFollowStatus = async () => {
+            if (user && !isOwner && targetHandle) {
+                setFriendsLoading(true);
+                try {
+                    const { data: friendsData } = await api.get('/users/friends');
+                    const isFriend = friendsData.friends.some(f => f.handle === targetHandle);
+                    setIsFollowing(isFriend);
+                } catch (e) {
+                    console.error("Failed to check friends", e);
+                } finally {
+                    setFriendsLoading(false);
                 }
-
-                setStatsData(statsRes.data);
-            } catch (err) {
-                setError('Failed to fetch data.');
-                console.error(err);
-            } finally {
-                setIsLoading(false);
             }
         };
+        checkFollowStatus();
+    }, [user, isOwner, targetHandle]);
 
-        fetchData();
-    }, [targetHandle, isOwner]);
+    const isLoading = hookLoading || friendsLoading;
+    const error = hookError ? 'Failed to fetch user data.' : null;
+
+    const handleToggleFollow = async () => {
+        if (!user) return;
+        setIsToggling(true);
+        try {
+            const { data: internalUser } = await api.get(`/users/find/${targetHandle}`);
+            await api.post(`/users/follow/${internalUser._id}`);
+            setIsFollowing(!isFollowing);
+        } catch {
+            alert('Could not follow user. They might not be registered on CodeDojo.');
+        } finally {
+            setIsToggling(false);
+        }
+    };
 
     if (isLoading) return <Container className="text-center mt-5"><Spinner animation="border" /></Container>;
     if (error) return <Container className="mt-5"><Alert variant="danger">{error}</Alert></Container>;
 
-    // Fallback if no user
     if (!targetHandle) return <Container className="mt-5"><Alert variant="info">Please log in.</Alert></Container>;
-    if (!profileData || !statsData) return null;
 
-    const { info, submissions } = profileData;
+    if (!hookData) return null;
+
+    const { info, stats: statsData, submissions = [] } = hookData;
 
     return (
-        <Container fluid className="p-4" style={{ maxWidth: '1600px' }}> {/* Wider container for dashboard feel */}
-            {/* 1. Header & Quick Stats Row */}
+        <Container fluid className="p-4" style={{ maxWidth: '1600px' }}>
             <Row className="mb-4">
-                <Col>
-                    <h2 className="mb-3">
-                        Welcome back, <span style={{ color: getHandleColor(info.rating) }}>{info.handle}</span>!
-                    </h2>
-                    <div className="text-muted d-flex align-items-center gap-2">
-                        <span className="badge bg-light text-dark border">{getRankTitle(info.rating)}</span>
+                <Col className="d-flex align-items-center justify-content-between">
+                    <div>
+                        <h2 className="mb-3 d-flex align-items-center gap-3">
+                            <span>Welcome back, <span style={{ color: getHandleColor(info.rating) }}>{info.handle}</span>!</span>
+                            {!isOwner && user && (
+                                <Button
+                                    variant={isFollowing ? "outline-secondary" : "outline-primary"}
+                                    onClick={handleToggleFollow}
+                                    disabled={isToggling}
+                                    size="sm"
+                                    className="d-flex align-items-center gap-2"
+                                >
+                                    {isToggling ? <Spinner size="sm" /> : (
+                                        isFollowing ? <><UserCheck size={18} /> Following</> : <><UserPlus size={18} /> Follow</>
+                                    )}
+                                </Button>
+                            )}
+                        </h2>
+                        <div className="text-muted d-flex align-items-center gap-2">
+                            <span className="badge bg-light text-dark border">{getRankTitle(info.rating)}</span>
+                        </div>
                     </div>
                 </Col>
             </Row>
@@ -90,7 +107,6 @@ const Dashboard = () => {
                 <Col sm={6} xl={3}><UserStatCard title="Contribution" value={info.contribution || 0} icon={TrendingUp} /></Col>
             </Row>
 
-            {/* 2. Activity & Engagement Row (Heatmap + Contests) */}
             <Row className="mb-4">
                 <Col lg={isOwner ? 8 : 12} className="mb-4 mb-lg-0">
                     <Card className="h-100">
@@ -107,9 +123,7 @@ const Dashboard = () => {
                 )}
             </Row>
 
-            {/* 3. Main Content: Recommendations vs Analytics vs Submissions */}
             <Row>
-                {/* Left Column: Recommendations & Submissions */}
                 <Col lg={7}>
                     {isOwner && (
                         <div className="mb-4">
@@ -128,7 +142,7 @@ const Dashboard = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {submissions.slice(0, 10).map(sub => ( // Limit to 10
+                                {submissions.slice(0, 10).map(sub => (
                                     <tr key={sub.id}>
                                         <td>
                                             <a href={`https://codeforces.com/contest/${sub.contestId}/problem/${sub.problem.index}`} target="_blank" rel="noopener noreferrer">
@@ -144,7 +158,6 @@ const Dashboard = () => {
                     </Card>
                 </Col>
 
-                {/* Right Column: Analytical Charts */}
                 <Col lg={5}>
                     <Card className="mb-4">
                         <Card.Header>Solved Difficulty</Card.Header>

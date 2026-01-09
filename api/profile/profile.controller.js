@@ -1,7 +1,7 @@
 import User from '../users/user.model.js';
 import Post from '../community/post.model.js';
-import Contest from '../contests/contest.model.js';
-import axios from 'axios';
+import CodeforcesService from '../services/codeforces.service.js';
+import cache from '../utils/cache.js';
 
 export const getUserProfileData = async (req, res) => {
     try {
@@ -10,27 +10,26 @@ export const getUserProfileData = async (req, res) => {
             return res.status(404).json({ msg: 'User or Codeforces handle not found' });
         }
 
-        const userInfoPromise = axios.get(`https://codeforces.com/api/user.info?handles=${user.handle}`);
-        const userSubmissionsPromise = axios.get(`https://codeforces.com/api/user.status?handle=${user.handle}`);
-        const communityPostsPromise = Post.find().sort({ createdAt: -1 }).limit(3).populate('author', 'handle');
+        const cacheKey = `profile_data_${user.handle}`;
+        const cachedData = cache.get(cacheKey);
 
-        const [userInfoResponse, userSubmissionsResponse, communityPosts] = await Promise.all([
-            userInfoPromise,
-            userSubmissionsPromise,
-            communityPostsPromise
-        ]);
-
-        if (userInfoResponse.data.status !== 'OK' || userSubmissionsResponse.data.status !== 'OK') {
-            return res.status(400).json({ msg: 'Error fetching data from Codeforces API' });
+        if (cachedData) {
+            return res.json(cachedData);
         }
 
-        const allSubmissions = userSubmissionsResponse.data.result;
+        const [userInfo, userSubmissions, communityPosts] = await Promise.all([
+            CodeforcesService.getUserInfo(user.handle),
+            CodeforcesService.getUserSubmissions(user.handle),
+            Post.find().sort({ createdAt: -1 }).limit(3).populate('author', 'handle')
+        ]);
+
         const profileData = {
-            info: userInfoResponse.data.result[0],
-            submissions: allSubmissions.slice(0, 10),
+            info: userInfo,
+            submissions: userSubmissions.slice(0, 10),
             communityPosts: communityPosts,
         };
 
+        cache.set(cacheKey, profileData, 300);
         res.json(profileData);
     } catch (err) {
         console.error(err.message);
@@ -41,10 +40,15 @@ export const getUserProfileData = async (req, res) => {
 export const getProfileStats = async (req, res) => {
     const { handle } = req.params;
     try {
-        const response = await axios.get(`https://codeforces.com/api/user.status?handle=${handle}`);
-        const submissions = response.data.result;
+        const cacheKey = `profile_stats_${handle}`;
+        const cachedStats = cache.get(cacheKey);
 
-        console.log(`Fetching stats for ${handle} - V2 (Rating Distribution)`);
+        if (cachedStats) {
+            return res.status(200).json(cachedStats);
+        }
+
+        const submissions = await CodeforcesService.getUserSubmissions(handle);
+
         const verdicts = {};
         const tags = {};
         const difficulty = {};
@@ -61,12 +65,10 @@ export const getProfileStats = async (req, res) => {
                 if (!solvedProblems.has(problemId)) {
                     solvedProblems.add(problemId);
 
-                    // Count Tags
                     sub.problem.tags.forEach(tag => {
                         tags[tag] = (tags[tag] || 0) + 1;
                     });
 
-                    // Count Difficulty (Rating Distribution)
                     if (sub.problem.rating) {
                         const rating = sub.problem.rating;
                         difficulty[rating] = (difficulty[rating] || 0) + 1;
@@ -75,7 +77,10 @@ export const getProfileStats = async (req, res) => {
             }
         });
 
-        res.status(200).json({ verdicts, tags, difficulty });
+        const statsData = { verdicts, tags, difficulty };
+        cache.set(cacheKey, statsData, 600);
+
+        res.status(200).json(statsData);
     } catch (error) {
         res.status(404).json({ error: `Could not fetch stats for handle: ${handle}` });
     }
@@ -91,14 +96,11 @@ export const getProblemRecommendations = async (req, res) => {
         const handle = user.handle;
         const userRating = user.rating || 1400; // Default to 1400 if no rating
 
-        // Fetch all submissions for the user
-        const submissionsRes = await axios.get(`https://codeforces.com/api/user.status?handle=${handle}&from=1&count=1000`);
-        const submissions = submissionsRes.data.result;
+        const submissions = await CodeforcesService.getUserSubmissions(handle);
 
         const solvedProblems = new Set();
         const tagFrequency = {};
 
-        // Analyze solved problems
         submissions.forEach(sub => {
             if (sub.verdict === 'OK') {
                 const problemId = `${sub.problem.contestId}${sub.problem.index}`;
@@ -109,31 +111,24 @@ export const getProblemRecommendations = async (req, res) => {
             }
         });
 
-        // Fetch the entire problemset
-        const problemsetRes = await axios.get('https://codeforces.com/api/problemset.problems');
-        const allProblems = problemsetRes.data.result.problems;
+        const allProblems = await CodeforcesService.getProblemSet();
 
-        // Filter for recommended problems
         const recommendations = allProblems.filter(problem => {
             const problemId = `${problem.contestId}${problem.index}`;
             const rating = problem.rating;
 
-            // Conditions: Not solved, has a rating, and is within a suitable difficulty range
             return !solvedProblems.has(problemId) &&
                 rating &&
                 rating >= userRating &&
                 rating <= userRating + 200;
         });
 
-        // Sort recommendations to prioritize problems with tags the user has solved less often
         recommendations.sort((a, b) => {
             const scoreA = a.tags.reduce((sum, tag) => sum + (tagFrequency[tag] || 0), 0);
             const scoreB = b.tags.reduce((sum, tag) => sum + (tagFrequency[tag] || 0), 0);
-            // A lower score means the user is less familiar with the tags, so we prioritize it
             return scoreA - scoreB;
         });
 
-        // Return the top 10 recommendations
         res.json(recommendations.slice(0, 10));
 
     } catch (err) {
@@ -145,24 +140,26 @@ export const getProblemRecommendations = async (req, res) => {
 export const getProfileInfo = async (req, res) => {
     const { handle } = req.params;
     try {
-        const response = await axios.get(`https://codeforces.com/api/user.info?handles=${handle}`);
-        if (response.data.status !== 'OK') {
-            throw new Error('User not found on Codeforces');
-        }
-        res.status(200).json(response.data.result[0]);
-    } catch (error) {
-        res.status(404).json({ error: `Could not fetch info for handle: ${handle}` });
-    }
-};
+        const cacheKey = `profile_info_full_${handle}`;
+        const cachedData = cache.get(cacheKey);
 
-export const getMyContests = async (req, res) => {
-    try {
-        const handle = req.user.handle;
-        const contests = await Contest.find({ 'participants.handle': handle });
-        res.status(200).json(contests);
-    } catch (err) {
-        console.error(err.message);
-        res.status(500).send('Server Error');
+        if (cachedData) {
+            return res.status(200).json(cachedData);
+        }
+
+        const [info, submissions] = await Promise.all([
+            CodeforcesService.getUserInfo(handle),
+            CodeforcesService.getUserSubmissions(handle, 1, 20)
+        ]);
+
+        const responseData = { info, submissions };
+
+        cache.set(cacheKey, responseData, 300);
+
+        res.status(200).json(responseData);
+    } catch (error) {
+        console.error("Profile Info Error:", error.message);
+        res.status(404).json({ error: `Could not fetch info for handle: ${handle}` });
     }
 };
 
@@ -173,15 +170,16 @@ export const getSubmissionStats = async (req, res) => {
     }
 
     try {
-        const { data } = await axios.get(`https://codeforces.com/api/user.status?handle=${handle}`);
+        const cacheKey = `submission_stats_${handle}`;
+        const cachedHeatmap = cache.get(cacheKey);
 
-        if (data.status !== 'OK') {
-            return res.status(404).json({ message: 'Could not fetch submissions from Codeforces API.' });
+        if (cachedHeatmap) {
+            return res.status(200).json(cachedHeatmap);
         }
 
-        // Process the data to get counts per day
-        const submissionsByDate = data.result.reduce((acc, submission) => {
-            // Convert UNIX timestamp to a YYYY-MM-DD string
+        const submissions = await CodeforcesService.getUserSubmissions(handle);
+
+        const submissionsByDate = submissions.reduce((acc, submission) => {
             const date = new Date(submission.creationTimeSeconds * 1000).toISOString().split('T')[0];
             if (acc[date]) {
                 acc[date]++;
@@ -191,11 +189,12 @@ export const getSubmissionStats = async (req, res) => {
             return acc;
         }, {});
 
-        // Convert the processed object to the array format the heatmap expects
         const heatmapData = Object.keys(submissionsByDate).map(date => ({
             date: date,
             count: submissionsByDate[date],
         }));
+
+        cache.set(cacheKey, heatmapData, 600);
 
         res.status(200).json(heatmapData);
 

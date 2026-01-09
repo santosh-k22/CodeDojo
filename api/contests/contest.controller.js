@@ -1,8 +1,9 @@
 import Contest from './contest.model.js';
 import slugify from 'slugify';
-import axios from 'axios';
+import CodeforcesService from '../services/codeforces.service.js';
 
-const leaderboardCache = {};
+import cache from '../utils/cache.js';
+
 const LEADERBOARD_CACHE_DURATION = 60 * 1000;
 
 const createContest = async (req, res) => {
@@ -13,7 +14,9 @@ const createContest = async (req, res) => {
         const contest = await Contest.create({
             name,
             slug,
-            host: req.user.handle, // Enforce host as the logged-in user for security
+            slug,
+            host: req.user.handle,
+            startTime,
             startTime,
             endTime,
         });
@@ -66,8 +69,7 @@ const addRandomProblems = async (req, res) => {
         const contest = await Contest.findById(contestId);
         if (!contest) return res.status(404).json({ error: 'Contest not found' });
 
-        const problemsResponse = await axios.get('https://codeforces.com/api/problemset.problems');
-        const allProblems = problemsResponse.data.result.problems;
+        const allProblems = await CodeforcesService.getProblemSet();
 
         const filteredProblems = allProblems.filter(p => p.rating === rating && !contest.problems.some(cp => cp.name === p.name));
 
@@ -96,8 +98,11 @@ const getLeaderboard = async (req, res) => {
     try {
         const { slug } = req.params;
 
-        if (leaderboardCache[slug] && (Date.now() - leaderboardCache[slug].timestamp < LEADERBOARD_CACHE_DURATION)) {
-            return res.status(200).json(leaderboardCache[slug].data);
+        const cacheKey = `leaderboard_${slug}`;
+        const cachedLeaderboard = cache.get(cacheKey);
+
+        if (cachedLeaderboard) {
+            return res.status(200).json(cachedLeaderboard);
         }
 
         const contest = await Contest.findOne({ slug }).populate('participants.userId', 'rating');
@@ -106,10 +111,9 @@ const getLeaderboard = async (req, res) => {
         const leaderboard = [];
         const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-        for (const participant of contest.participants) {
+        const processParticipant = async (participant) => {
             try {
-                const submissionsResponse = await axios.get(`https://codeforces.com/api/user.status?handle=${participant.handle}&from=1&count=100`);
-                const allSubmissions = submissionsResponse.data.result;
+                const allSubmissions = await CodeforcesService.getUserSubmissions(participant.handle, 1, 100);
 
                 const contestSubmissions = allSubmissions.filter(sub => {
                     const subTime = new Date(sub.creationTimeSeconds * 1000);
@@ -138,27 +142,34 @@ const getLeaderboard = async (req, res) => {
                         }
                     }
                 }
-                leaderboard.push({
+                return {
                     handle: participant.handle,
                     rating: participant.userId?.rating,
                     score,
                     penalty
-                });
-
-                await delay(200);
+                };
 
             } catch (err) {
-                console.error(`Failed to fetch subs for ${participant.handle}`, err.message);
-                leaderboard.push({ handle: participant.handle, rating: participant.userId?.rating, score: 0, penalty: 0, error: true });
+                console.error(`Failed to fetch subs for ${participant.handle}:`, err.message);
+                return { handle: participant.handle, rating: participant.userId?.rating, score: 0, penalty: 0, error: true };
+            }
+        };
+
+        const BATCH_SIZE = 5;
+        for (let i = 0; i < contest.participants.length; i += BATCH_SIZE) {
+            const batch = contest.participants.slice(i, i + BATCH_SIZE);
+            const results = await Promise.all(batch.map(p => processParticipant(p)));
+            leaderboard.push(...results);
+
+            // Respect rate limits between batches
+            if (i + BATCH_SIZE < contest.participants.length) {
+                await delay(500);
             }
         }
 
         leaderboard.sort((a, b) => b.score - a.score || a.penalty - b.penalty);
 
-        leaderboardCache[slug] = {
-            data: leaderboard,
-            timestamp: Date.now()
-        };
+        cache.set(cacheKey, leaderboard, 60);
 
         res.status(200).json(leaderboard);
     } catch (error) {
@@ -179,23 +190,32 @@ const joinContest = async (req, res) => {
             return res.status(400).json({ error: 'Contest has already ended' });
         }
 
-        const isParticipant = contest.participants.some(p => p.userId.equals(req.user._id));
-        if (isParticipant) {
+        const updatedContest = await Contest.findOneAndUpdate(
+            {
+                slug: req.params.slug,
+                'participants.userId': { $ne: req.user._id }
+            },
+            {
+                $addToSet: {
+                    participants: {
+                        handle: req.user.handle,
+                        userId: req.user._id
+                    }
+                }
+            },
+            { new: true }
+        );
+
+        if (!updatedContest) {
             return res.status(400).json({ error: 'You have already joined this contest' });
         }
 
-        contest.participants.push({
-            handle: req.user.handle,
-            userId: req.user._id
-        });
-
-        await contest.save();
-
-        delete leaderboardCache[req.params.slug];
+        cache.delete(`leaderboard_${req.params.slug}`);
 
         res.status(200).json({ message: 'Successfully joined the contest' });
 
     } catch (error) {
+        console.error(error);
         res.status(500).json({ error: 'Server error while joining contest' });
     }
 };
@@ -241,8 +261,9 @@ const addManualProblem = async (req, res) => {
             return res.status(404).json({ error: 'Contest not found' });
         }
 
-        const problemsResponse = await axios.get('https://codeforces.com/api/problemset.problems');
-        const problem = problemsResponse.data.result.problems.find(p =>
+        const allProblems = await CodeforcesService.getProblemSet();
+
+        const problem = allProblems.find(p =>
             p.contestId.toString() === cfContestId.toString() && p.index === cfProblemIndex.toUpperCase()
         );
 
@@ -268,6 +289,26 @@ const addManualProblem = async (req, res) => {
     }
 };
 
+const getExternalContests = async (req, res) => {
+    try {
+        const allContests = await CodeforcesService.getContestsList(false);
+        const upcoming = allContests
+            .filter(c => c.phase === 'BEFORE')
+            .map(c => ({
+                id: c.id,
+                name: c.name,
+                startTime: new Date(c.startTimeSeconds * 1000),
+                endTime: new Date((c.startTimeSeconds + c.durationSeconds) * 1000),
+                origin: 'Codeforces',
+                link: `https://codeforces.com/contest/${c.id}`
+            }));
+        res.status(200).json(upcoming);
+    } catch (error) {
+        console.error("External Contests Error:", error.message);
+        res.status(500).json({ error: 'Failed to fetch external contests' });
+    }
+};
+
 export {
     createContest,
     getContests,
@@ -276,4 +317,5 @@ export {
     getLeaderboard,
     joinContest,
     addManualProblem,
+    getExternalContests
 };

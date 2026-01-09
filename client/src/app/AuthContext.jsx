@@ -1,8 +1,10 @@
 import { createContext, useReducer, useEffect } from 'react';
 import api from './api';
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const AuthContext = createContext();
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const authReducer = (state, action) => {
     switch (action.type) {
         case 'LOGIN':
@@ -32,7 +34,6 @@ export const AuthContextProvider = ({ children }) => {
     };
 
     const loginWithChallenge = async (handle) => {
-        // Vite's proxy handles the redirect to backend
         const response = await api.post('/auth/verify', { handle });
 
         if (response.data && response.data.token) {

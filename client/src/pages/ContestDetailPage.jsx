@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from 'react';
+import { useState, useEffect, useContext, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { Container, Row, Col, Card, Button, Spinner, Alert, Table, Form, Tabs, Tab, Badge } from 'react-bootstrap';
 import api from '../app/api';
@@ -18,15 +18,16 @@ const ContestDetailPage = () => {
     const [isHost, setIsHost] = useState(false);
 
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [friends, setFriends] = useState([]);
+    const [showFriendsOnly, setShowFriendsOnly] = useState(false);
 
-    // State for Admin Forms
     const [rating, setRating] = useState(1200);
     const [count, setCount] = useState(1);
     const [problemUrl, setProblemUrl] = useState('');
     const [isSubmittingAdmin, setIsSubmittingAdmin] = useState(false);
     const [adminError, setAdminError] = useState('');
 
-    const fetchContestData = async () => {
+    const fetchContestData = useCallback(async () => {
         try {
             const contestRes = await api.get(`/contests/slug/${slug}`);
             const contestData = contestRes.data;
@@ -38,7 +39,7 @@ const ContestDetailPage = () => {
 
             const leaderboardRes = await api.get(`/contests/slug/${slug}/leaderboard`);
             setLeaderboard(leaderboardRes.data);
-            setError(null); // Clear previous errors on success
+            setError(null);
 
         } catch (err) {
             setError('Failed to fetch contest details.');
@@ -46,15 +47,28 @@ const ContestDetailPage = () => {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [slug, user]);
+
+    const fetchFriends = useCallback(async () => {
+        if (!user) return;
+        try {
+            const { data } = await api.get('/users/friends');
+            const friendHandles = data.friends.map(f => f.handle);
+            if (user.handle) friendHandles.push(user.handle);
+            setFriends(friendHandles);
+        } catch (err) {
+            console.error("Failed to fetch friends", err);
+        }
+    }, [user]);
 
     useEffect(() => {
         fetchContestData();
-    }, [slug, user]);
+        if (user) fetchFriends();
+    }, [fetchContestData, fetchFriends, user]);
 
     const handleRefresh = async () => {
         setIsRefreshing(true);
-        await fetchContestData();
+        await Promise.all([fetchContestData(), fetchFriends()]);
         setIsRefreshing(false);
     };
 
@@ -63,7 +77,7 @@ const ContestDetailPage = () => {
             await api.post(`/contests/slug/${slug}/join`);
             fetchContestData();
         } catch (err) {
-            alert(err.response?.data?.error || 'Failed to join contest.');
+            setError(err.response?.data?.error || 'Failed to join contest.');
         }
     };
 
@@ -110,7 +124,7 @@ const ContestDetailPage = () => {
     if (!contest) return null;
 
     const status = getStatus(contest);
-    const isParticipant = user && contest.participants.some(p => p.handle === user.handle);
+    const isParticipant = user && (contest.participants || []).some(p => p.handle === user.handle);
 
     return (
         <Container className="py-4">
@@ -145,7 +159,7 @@ const ContestDetailPage = () => {
 
             <Tabs defaultActiveKey="problems" id="contest-details-tabs" className="mb-3" fill>
                 <Tab eventKey="problems" title={<><ListChecks className="me-2" />Problems</>}>
-                    {contest.problems.length > 0 ? (
+                    {(contest.problems || []).length > 0 ? (
                         <Table striped hover responsive>
                             <thead>
                                 <tr><th>#</th><th>Problem Name</th><th>Rating</th><th>Link</th></tr>
@@ -169,20 +183,32 @@ const ContestDetailPage = () => {
                 </Tab>
 
                 <Tab eventKey="leaderboard" title={<><Users className="me-2" />Leaderboard</>}>
+                    <div className="d-flex align-items-center mb-3">
+                        <Form.Check
+                            type="switch"
+                            id="friends-filter-switch"
+                            label="Show Friends Only"
+                            checked={showFriendsOnly}
+                            onChange={(e) => setShowFriendsOnly(e.target.checked)}
+                            disabled={!user || friends.length === 0}
+                        />
+                    </div>
                     {leaderboard.length > 0 ? (
                         <Table striped hover responsive>
                             <thead>
                                 <tr><th>Rank</th><th>User</th><th>Score</th><th>Penalty</th></tr>
                             </thead>
                             <tbody>
-                                {leaderboard.map((entry, index) => (
-                                    <tr key={entry.handle}>
-                                        <td>{index + 1}</td>
-                                        <td><UserLink handle={entry.handle} rating={entry.rating} isExternal /></td>
-                                        <td>{entry.score}</td>
-                                        <td>{moment.utc(entry.penalty * 1000).format('HH:mm:ss')}</td>
-                                    </tr>
-                                ))}
+                                {leaderboard
+                                    .filter(entry => !showFriendsOnly || friends.includes(entry.handle))
+                                    .map((entry, index) => (
+                                        <tr key={entry.handle}>
+                                            <td>{index + 1}</td>
+                                            <td><UserLink handle={entry.handle} rating={entry.rating} isExternal /></td>
+                                            <td>{entry.score}</td>
+                                            <td>{moment.utc(entry.penalty * 1000).format('HH:mm:ss')}</td>
+                                        </tr>
+                                    ))}
                             </tbody>
                         </Table>
                     ) : <Alert variant="info">The leaderboard is empty.</Alert>}

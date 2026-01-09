@@ -10,9 +10,7 @@ export const protect = async (req, res, next) => {
 
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-            // CRITICAL: Find the user in the database using the ID from the token.
-            // Attach the FULL user object (excluding the password) to the request.
-            req.user = await User.findById(decoded._id).select('-user');
+            req.user = await User.findById(decoded._id).select('-__v');
 
             if (!req.user) {
                 return res.status(401).json({ msg: 'Not authorized, user not found' });

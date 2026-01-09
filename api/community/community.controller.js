@@ -21,7 +21,7 @@ const createPost = async (req, res) => {
 const getPosts = async (req, res) => {
     try {
         const posts = await Post.find({})
-            .populate('author', 'handle rating') // Replace author ID with user object (handle + rating)
+            .populate('author', 'handle rating')
             .sort({ createdAt: -1 });
         res.status(200).json(posts);
     } catch (error) {
@@ -31,7 +31,12 @@ const getPosts = async (req, res) => {
 
 const votePost = async (req, res) => {
     const { postId } = req.params;
+    const { voteType } = req.body;
     const userId = req.user._id;
+
+    if (!['up', 'down'].includes(voteType)) {
+        return res.status(400).json({ error: 'Invalid vote type' });
+    }
 
     try {
         const post = await Post.findById(postId);
@@ -39,19 +44,44 @@ const votePost = async (req, res) => {
             return res.status(404).json({ error: 'Post not found' });
         }
 
-        const votedIndex = post.votedBy.findIndex(id => id.equals(userId));
+        const isUpvoted = post.upvotedBy.some(id => id.equals(userId));
+        const isDownvoted = post.downvotedBy.some(id => id.equals(userId));
 
-        if (votedIndex > -1) {
-            post.votes -= 1;
-            post.votedBy.splice(votedIndex, 1);
+        let update = {};
+
+        if (voteType === 'up') {
+            if (isUpvoted) {
+                // Toggle off
+                update = { $pull: { upvotedBy: userId } };
+            } else {
+                // Remove downvote if exists, add upvote
+                update = {
+                    $pull: { downvotedBy: userId },
+                    $addToSet: { upvotedBy: userId }
+                };
+            }
         } else {
-            post.votes += 1;
-            post.votedBy.push(userId);
+            // Downvote
+            if (isDownvoted) {
+                // Toggle off
+                update = { $pull: { downvotedBy: userId } };
+            } else {
+                // Remove upvote if exists, add downvote
+                update = {
+                    $pull: { upvotedBy: userId },
+                    $addToSet: { downvotedBy: userId }
+                };
+            }
         }
 
-        await post.save();
-        res.status(200).json(post);
+        const updatedPost = await Post.findByIdAndUpdate(postId, update, { new: true });
+
+        updatedPost.votes = updatedPost.upvotedBy.length - updatedPost.downvotedBy.length;
+        await updatedPost.save(); // Save the calculated field
+
+        res.status(200).json(updatedPost);
     } catch (error) {
+        console.error(error);
         res.status(500).json({ error: 'Failed to vote on post' });
     }
 };

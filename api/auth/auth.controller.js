@@ -1,8 +1,8 @@
 import User from '../users/user.model.js';
 import Challenge from './challenge.model.js';
 import jwt from 'jsonwebtoken';
-import axios from 'axios';
 import crypto from 'crypto';
+import CodeforcesService from '../services/codeforces.service.js';
 
 const createToken = (_id) => {
     return jwt.sign({ _id }, process.env.JWT_SECRET, { expiresIn: '3d' });
@@ -15,15 +15,9 @@ const createChallenge = async (req, res) => {
     }
 
     try {
-        // Check if user exists on Codeforces
-        const userStatusResponse = await axios.get(`https://codeforces.com/api/user.status?handle=${handle}&from=1&count=1`);
-        if (userStatusResponse.data.status !== 'OK') {
-            return res.status(404).json({ error: 'Codeforces user not found' });
-        }
+        await CodeforcesService.getUserSubmissions(handle, 1, 1);
 
-        // Fetch a random problem from Codeforces
-        const problemsResponse = await axios.get('https://codeforces.com/api/problemset.problems');
-        const problems = problemsResponse.data.result.problems;
+        const problems = await CodeforcesService.getProblemSet();
         const randomProblem = problems[Math.floor(Math.random() * problems.length)];
 
         const uniqueString = crypto.randomBytes(16).toString('hex');
@@ -45,7 +39,7 @@ const createChallenge = async (req, res) => {
             uniqueString: challenge.uniqueString,
         });
     } catch (error) {
-        res.status(500).json({ error: 'Failed to create challenge' });
+        res.status(500).json({ error: 'Failed to create challenge. User might not exist.' });
     }
 };
 
@@ -61,8 +55,7 @@ const verifyChallenge = async (req, res) => {
             return res.status(404).json({ error: 'No active challenge found' });
         }
 
-        const response = await axios.get(`https://codeforces.com/api/user.status?handle=${handle}&from=1&count=1`);
-        const submissions = response.data.result;
+        const submissions = await CodeforcesService.getUserSubmissions(handle, 1, 1);
 
         if (!submissions || submissions.length === 0) {
             return res.status(400).json({ error: 'No recent submissions found' });
@@ -76,10 +69,9 @@ const verifyChallenge = async (req, res) => {
         }
 
         let user = await User.findOne({ handle });
+        const cfUser = await CodeforcesService.getUserInfo(handle);
 
         if (!user) {
-            const userInfoResponse = await axios.get(`https://codeforces.com/api/user.info?handles=${handle}`);
-            const cfUser = userInfoResponse.data.result[0];
             user = await User.create({
                 handle: cfUser.handle,
                 email: cfUser.email || `${cfUser.handle}@codedojo.io`,
@@ -88,6 +80,12 @@ const verifyChallenge = async (req, res) => {
                 maxRating: cfUser.maxRating,
                 maxRank: cfUser.maxRank,
             });
+        } else {
+            user.rating = cfUser.rating;
+            user.rank = cfUser.rank;
+            user.maxRating = cfUser.maxRating;
+            user.maxRank = cfUser.maxRank;
+            await user.save();
         }
 
         const token = createToken(user._id);

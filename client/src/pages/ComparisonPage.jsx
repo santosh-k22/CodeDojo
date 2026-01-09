@@ -1,52 +1,30 @@
 import { useState } from 'react';
 import { Container, Row, Col, Form, Button, Spinner, Alert, Card } from 'react-bootstrap';
-import api from '../app/api';
 import VerdictChart from '../features/components/VerdictChart';
 import DifficultyChart from '../features/components/DifficultyChart';
 import TagsChart from '../features/components/TagsChart';
 import UserStatCard from '../features/components/UserStatCard';
 import SubmissionHeatmap from '../features/components/SubmissionHeatmap';
+import UserSearch from '../features/components/UserSearch';
 import { Award, Star, BarChart3, TrendingUp } from 'lucide-react';
+import useUserProfile from '../hooks/useUserProfile';
 
 const ComparisonPage = () => {
-    const [handle1, setHandle1] = useState('');
-    const [handle2, setHandle2] = useState('');
-    const [data1, setData1] = useState(null);
-    const [data2, setData2] = useState(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState(null);
+    const [handle1, setHandle1] = useState(null);
+    const [handle2, setHandle2] = useState(null);
 
-    const handleCompare = async (e) => {
-        e.preventDefault();
-        if (!handle1 || !handle2) {
-            setError('Please provide two handles to compare.');
-            return;
-        }
-        setIsLoading(true);
-        setError(null);
-        setData1(null);
-        setData2(null);
+    const user1 = useUserProfile(handle1);
+    const user2 = useUserProfile(handle2);
 
-        try {
-            const [stats1, info1] = await Promise.all([
-                api.get(`/profile/stats/${handle1}`),
-                api.get(`/profile/info/${handle1}`)
-            ]);
+    const isLoading = user1.loading || user2.loading;
+    const error = user1.error || user2.error ? 'Failed to fetch data for one or more users.' : null;
 
-            const [stats2, info2] = await Promise.all([
-                api.get(`/profile/stats/${handle2}`),
-                api.get(`/profile/info/${handle2}`)
-            ]);
-
-            setData1({ stats: stats1.data, info: info1.data });
-            setData2({ stats: stats2.data, info: info2.data });
-
-        } catch (err) {
-            setError('Failed to fetch data. Check handles and try again.');
-        } finally {
-            setIsLoading(false);
-        }
+    const handleUserFound = (slot, handle) => {
+        if (slot === 1) setHandle1(handle);
+        if (slot === 2) setHandle2(handle);
     };
+
+
 
     const renderUserStats = (data) => (
         <>
@@ -77,50 +55,68 @@ const ComparisonPage = () => {
 
     return (
         <Container className="mt-4">
-            <h2 className="mb-4 text-center">Compare Codeforces Users</h2>
-            <Form onSubmit={handleCompare}>
-                <Row className="align-items-center justify-content-center mb-4">
-                    <Col md={4}>
-                        <Form.Control
-                            type="text"
-                            placeholder="Enter handle 1 (e.g., tourist)"
-                            value={handle1}
-                            onChange={(e) => setHandle1(e.target.value)}
-                            required
-                        />
-                    </Col>
-                    <Col md={4}>
-                        <Form.Control
-                            type="text"
-                            placeholder="Enter handle 2 (e.g., Petr)"
-                            value={handle2}
-                            onChange={(e) => setHandle2(e.target.value)}
-                            required
-                        />
-                    </Col>
-                    <Col md={2}>
-                        <Button variant="primary" type="submit" className="w-100" disabled={isLoading}>
-                            {isLoading ? <Spinner as="span" animation="border" size="sm" /> : 'Compare'}
-                        </Button>
-                    </Col>
-                </Row>
-            </Form>
+            <h2 className="mb-4 text-center">Compare Users</h2>
+
+            <Row className="mb-4">
+                <Col md={6} className="mb-3 mb-md-0">
+                    <Card className={handle1 ? "border-primary" : ""}>
+                        <Card.Header className={handle1 ? "bg-primary text-white d-flex justify-content-between align-items-center" : ""}>
+                            <span>{handle1 ? handle1 : "User 1"}</span>
+                            {handle1 && <Button variant="light" size="sm" onClick={() => setHandle1(null)} style={{ fontSize: '0.7em', padding: '2px 8px' }}>Change</Button>}
+                        </Card.Header>
+                        <Card.Body>
+                            {!handle1 ? (
+                                <UserSearch
+                                    disableRedirect={true}
+                                    checkGlobal={true}
+                                    onUserFound={(h) => handleUserFound(1, h)}
+                                    placeholder="Search User 1..."
+                                />
+                            ) : (
+                                <div className="text-center text-success fw-bold">Selected</div>
+                            )}
+                        </Card.Body>
+                    </Card>
+                </Col>
+                <Col md={6}>
+                    <Card className={handle2 ? "border-primary" : ""}>
+                        <Card.Header className={handle2 ? "bg-primary text-white d-flex justify-content-between align-items-center" : ""}>
+                            <span>{handle2 ? handle2 : "User 2"}</span>
+                            {handle2 && <Button variant="light" size="sm" onClick={() => setHandle2(null)} style={{ fontSize: '0.7em', padding: '2px 8px' }}>Change</Button>}
+                        </Card.Header>
+                        <Card.Body>
+                            {!handle2 ? (
+                                <UserSearch
+                                    disableRedirect={true}
+                                    checkGlobal={true}
+                                    onUserFound={(h) => handleUserFound(2, h)}
+                                    placeholder="Search User 2..."
+                                />
+                            ) : (
+                                <div className="text-center text-success fw-bold">Selected</div>
+                            )}
+                        </Card.Body>
+                    </Card>
+                </Col>
+            </Row>
+
+            {isLoading && <div className="text-center py-5"><Spinner animation="border" /></div>}
 
             {error && <Alert variant="danger">{error}</Alert>}
 
-            {!isLoading && !data1 && !data2 && (
+            {!isLoading && !user1.data && !user2.data && (
                 <Alert variant="info" className="text-center">Enter two handles to see a side-by-side comparison.</Alert>
             )}
 
-            {data1 && data2 && (
+            {user1.data && user2.data && (
                 <Row>
                     <Col lg={6}>
-                        <h3 className="text-center mb-3">{data1.info.handle}</h3>
-                        {renderUserStats(data1)}
+                        <h3 className="text-center mb-3">{user1.data.info.handle}</h3>
+                        {renderUserStats(user1.data)}
                     </Col>
                     <Col lg={6}>
-                        <h3 className="text-center mb-3">{data2.info.handle}</h3>
-                        {renderUserStats(data2)}
+                        <h3 className="text-center mb-3">{user2.data.info.handle}</h3>
+                        {renderUserStats(user2.data)}
                     </Col>
                 </Row>
             )}

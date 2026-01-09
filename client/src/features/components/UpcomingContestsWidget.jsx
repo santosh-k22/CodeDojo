@@ -1,55 +1,59 @@
 import { useState, useEffect } from 'react';
 import { Card, ListGroup, Badge, Spinner, Button } from 'react-bootstrap';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
 import moment from 'moment';
 import { Calendar, ExternalLink } from 'lucide-react';
 import api from '../../app/api';
+import useCodeforcesContests from '../../hooks/useCodeforcesContests';
 
 const UpcomingContestsWidget = () => {
     const [contests, setContests] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [isLoadingDojo, setIsLoadingDojo] = useState(true);
+
+    const { contests: cfContests, loading: isLoadingCF } = useCodeforcesContests();
 
     useEffect(() => {
-        const fetchContests = async () => {
+        const fetchDojoContests = async () => {
             try {
-                // Fetch Dojo Contests (first 3)
-                const { data: dojoData } = await api.get('/contests?limit=3');
-                const dojoContests = dojoData.contests.map(c => ({
+                const { data } = await api.get('/contests?limit=3');
+                const dojoContests = data.contests.map(c => ({
                     ...c,
                     type: 'CodeDojo',
                     link: `/contests/${c.slug}`
                 }));
 
-                // Fetch Codeforces Contests (upcoming)
-                const { data: cfData } = await axios.get('https://codeforces.com/api/contest.list?gym=false');
-                const cfContests = cfData.result
-                    .filter(c => c.phase === 'BEFORE')
-                    .slice(0, 3) // Need top 3 upcoming
-                    .map(c => ({
-                        ...c,
-                        name: c.name,
-                        startTime: new Date(c.startTimeSeconds * 1000),
-                        type: 'Codeforces',
-                        link: `https://codeforces.com/contest/${c.id}`
-                    }));
-
-                const relevantContests = [...dojoContests, ...cfContests]
-                    .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
-                    .slice(0, 5);
-
-                setContests(relevantContests);
-            } catch (err) {
-                console.error("Failed to fetch upcoming contests widget", err);
+                return dojoContests;
+            } catch {
+                console.error('Failed to fetch upcoming contests');
+                return []; // Ensure an empty array is returned on error
             } finally {
-                setIsLoading(false);
+                setIsLoadingDojo(false);
             }
         };
 
-        fetchContests();
+        fetchDojoContests().then(dojo => {
+            setDojoContests(dojo);
+        });
     }, []);
 
-    if (isLoading) return <div className="text-center p-3"><Spinner size="sm" /></div>;
+    const [dojoContests, setDojoContests] = useState([]);
+
+    useEffect(() => {
+        if (isLoadingDojo || isLoadingCF) return;
+
+        const relevantCF = cfContests.slice(0, 3).map(c => ({
+            ...c,
+            type: 'Codeforces'
+        }));
+
+        const relevantContests = [...dojoContests, ...relevantCF]
+            .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
+            .slice(0, 5);
+
+        setContests(relevantContests);
+    }, [dojoContests, cfContests, isLoadingDojo, isLoadingCF]);
+
+    if (isLoadingDojo || isLoadingCF) return <div className="text-center p-3"><Spinner size="sm" /></div>;
 
     return (
         <Card className="h-100">

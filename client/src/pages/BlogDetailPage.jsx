@@ -1,29 +1,28 @@
-import { useState, useEffect, useContext } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Container, Card, Button, Form, Spinner, Alert, ListGroup } from 'react-bootstrap';
 import api from '../app/api';
 import moment from 'moment';
 import { AuthContext } from '../app/AuthContext';
+import VoteControl from '../features/components/VoteControl';
 
 const BlogDetailPage = () => {
     const { id } = useParams();
-    const { user } = useContext(AuthContext);
 
     const [post, setPost] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
-    const fetchPost = async () => {
-        try {
-            const { data } = await api.get(`/community/${id}`);
-            setPost(data);
-        } catch (err) {
-            setError('Could not fetch the post.');
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
     useEffect(() => {
+        const fetchPost = async () => {
+            try {
+                const { data } = await api.get(`/community/${id}`);
+                setPost(data);
+            } catch {
+                setError('Could not fetch the post.');
+            } finally {
+                setIsLoading(false);
+            }
+        };
         fetchPost();
     }, [id]);
 
@@ -41,7 +40,10 @@ const BlogDetailPage = () => {
                     </p>
                 </Card.Header>
                 <Card.Body>
-                    <Card.Text style={{ whiteSpace: 'pre-wrap' }}>{post.content}</Card.Text>
+                    <div className="d-flex">
+                        <VoteControl post={post} />
+                        <Card.Text style={{ whiteSpace: 'pre-wrap' }} className="flex-grow-1 ms-3">{post.content}</Card.Text>
+                    </div>
                 </Card.Body>
             </Card>
 

@@ -2,7 +2,7 @@ import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { getHandleColor } from '../../utils/codeforcesColors';
 
-const RatingDistributionChart = ({ data }) => {
+const DifficultyChart = ({ data }) => {
     // Transform data object { "800": 10, "900": 5 } into array sorted by rating
     const chartData = Object.keys(data || {})
         .map(key => ({
@@ -49,4 +49,4 @@ const RatingDistributionChart = ({ data }) => {
 
 
 
-export default RatingDistributionChart;
+export default DifficultyChart;
